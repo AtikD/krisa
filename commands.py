@@ -1,4 +1,4 @@
-from config import dp, db, bot, ofcrs, notes, notes_db, app
+from config import dp, db, bot, ofcrs, notes, notes_db, app, tagall
 
 from aiogram import types
 from aiogram.utils.exceptions import BadRequest, BotKicked
@@ -47,16 +47,31 @@ async def cmd_addgroup(message: types.Message):
 async def cmd_removegroup(message: types.Message):
     user = db.get(str(message.from_user.id))
     if not user:
-        await message.answer("У Вас нет добавленных групп!")
+        await message.answer("[Error] У Вас нет добавленных групп!")
         return
     num = message.text.split(' ')[1]
     try:
         user[num] = False
     except KeyError:
-        await message.answer("Такого кода нет в Вашем списке!")
+        await message.answer("[Error] Такого кода нет в Вашем списке!")
         return
     db.set(str(message.from_user.id), user)
     await message.answer("Успешно удалил!")
+
+@dp.message_handler(lambda m: m.from_user.id == m.chat.id, commands=["reload"])# Перезагрузка списков групп и заметок
+async def cmd_reload(message: types.Message):
+    old_notes, old_chats = notes_db.get(str(message.from_user.id)), db.get(str(message.from_user.id))
+    new_notes, new_chats = {}, {}
+    for i in old_notes:
+        if old_notes[i] is not False:
+            new_notes.update({str(len(new_notes)+1): old_notes[i]})
+    for i in old_chats:
+        if old_chats[i] is not False:
+            new_chats.update({str(len(new_chats)+1): old_chats[i]})
+    notes_db.set(str(message.from_user.id), new_notes)
+    db.set(str(message.from_user.id), new_chats)
+    await message.answer('done')
+            
 
 @dp.message_handler(lambda m: m.from_user.id == m.chat.id, commands=["notes"])# Список заметок
 async def cmd_notelits(message: types.Message):
@@ -77,20 +92,20 @@ async def cmd_addnote(message: types.Message):
 async def cmd_removenote(message: types.Message):
     user = notes_db.get(str(message.from_user.id))
     if not user:
-        await message.answer("У Вас нет заметок!")
+        await message.answer("[Error] У Вас нет заметок!")
         return
     num = message.text.split(' ')[1]
     try:
         user[num] = False
     except KeyError:
-        await message.answer("Такой заметки не существует!")
+        await message.answer("[Error] Такой заметки не существует!")
         return
     notes_db.set(str(message.from_user.id), user)
     await message.answer("Успешно удалил!")
 
 @dp.message_handler(lambda m: m.from_user.id == m.chat.id, commands=["groups"])# Список груп
 async def cmd_grouplist(message: types.Message):
-    user = db.get(message.from_user.id)
+    user = db.get(str(message.from_user.id))
     text = 'Ваши группы: \n\n'
     if user:  
         for i in user:
@@ -119,39 +134,39 @@ async def cmd_rass(message: types.Message):
                     pass
                 except Exception as ex:
                   await message.reply(str(ex))
-                  await message.answer("Отправьте это @atikdd пожалуйста!")
+                  await message.answer("[Error] Отправьте это @atikdd пожалуйста!")
                   return
     try:
         msg = await app.send_message(user[msg1[0]]['id'], text)
         await msg.pin()
     except BotKicked:
-        await message.reply("Меня нет в чате!")
+        await message.reply("[Report] Меня нет в чате!")
         return
     except BadRequest:
-        await message.reply(f"У меня нет прав закреплять сообщения, но отправить я смог!\n<a href='{msg.link}'>Клик!</a>")
+        await message.reply(f"[Report] У меня нет прав закреплять сообщения, но отправить я смог!\n<a href='{msg.link}'>Клик!</a>")
         return
     except Exception as ex:
         await message.reply(str(ex))
-        await message.answer("Отправьте это @atikdd пожалуйста!")
+        await message.answer("[Error] Отправьте это @atikdd пожалуйста!")
         return
     users = [
             str(member.user.id)
             async for member in app.get_chat_members(msg.chat.id)
             if not (member.user.is_bot or member.user.is_deleted)
         ]
-    button = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text = "TagAll!", callback_data = f"{user[msg1[0]]['id']} " + ' '.join(users)))
+    tagall.update({str(user[msg1[0]]['id']): users})
+    button = types.InlineKeyboardMarkup().add(types.InlineKeyboardButton(text = "TagAll!", callback_data = f"{user[msg1[0]]['id']}"))
     await message.reply(f"Операция выполнена успешно!\n<a href='{msg.link}'>Клик!</a>",reply_markup = button)
 
 @dp.callback_query_handler() # TAGALL
 async def cmd_tagall(call: types.CallbackQuery):
-    tagall = call.data.split(' ')
-    print(tagall[0])
-    print(tagall[1:])
-    chat = tagall[0]
-    users = [f"<a href=\"tg://user?id={i}\">\u2060</a>" for i in tagall[1:]]
+    if call.data not in tagall:
+        await call.message.edit_reply_markup()
+        return await call.answer("НЕТ ТЕГАЛА!")
+    users = [f"<a href=\"tg://user?id={i}\">\u2060</a>" for i in tagall[call.data]]
     for output in [
             users[i: i + 5]
             for i in range(0, len(users), 5)
         ]:
-            await bot.send_message(chat,"Действуем!" + "\u2060".join(output))    
+            await bot.send_message(call.data,"[TagAll] Действуем!" + "\u2060".join(output))    
     await call.message.edit_text(call.message.html_text + "\nУспешно всех тегнул!")

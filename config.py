@@ -10,6 +10,7 @@ db = LightDB("db.json")
 notes_db = LightDB("notes.json")
 ofcrs = []
 notes = []
+tagall = {}
 # static variables
 logging.basicConfig(level=logging.INFO)
 config = configparser.ConfigParser()
